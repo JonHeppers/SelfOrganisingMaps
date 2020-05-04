@@ -4,9 +4,9 @@
 	"LGN_svgpath" : "boundaries/trial.svg",
 	"CX_svgpath" : "boundaries/trial.svg",
 	"homeostasis" : true,	
-	"blocks": 10,
+	"blocks": 100,
 	"steps": 1000,
-	"settle": 1,
+	"settle": 16,
 	"beta" : 0.991,
 	"lambda" : 0.01,
 	"mu" : 0.024,
@@ -29,6 +29,13 @@
 	"excitSigma" : 0.025,
 	"inhibSigma" : 0.075,
 	"LGNCenterSigma": 0.037,
-	"LGNSuroundSigma": 0.150
+	"LGNSuroundSigma": 0.150,
+	"videoSource" : "configs/videos/planet_earth_700.avi",
+	"plotGratingStage" : false,
+	"gratingWidth" : 30,
+	"numGratingOrientations" : 20,
+	"numGratingPhases" : 8,
+	"zeroCortex" : true,
+	"decayCortex" : false
 
 }

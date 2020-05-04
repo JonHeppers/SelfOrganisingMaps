@@ -8,6 +8,7 @@
 #include "morph/ReadCurves.h"
 #include "morph/RD_Base.h"
 #include "morph/RD_Plot.h"
+#include <math.h>
 
 using namespace cv;
 using namespace morph;
@@ -19,7 +20,8 @@ using morph::RD_Plot;
 class Network{
 
     /*
-        High-level wrapper for specifying a network so that a simulation can be built by calling the methods (e.g., step/map) in a given order.
+        High-level wrapper for specifying a network so that a simulation can be built by calling the methods
+        (e.g., step/map) in a given order.
     */
 
     public:
@@ -131,11 +133,11 @@ public:
         Dot product of each weight vector with the corresponding source sheet field values, multiplied by the strength of the projection
     */
 	#pragma omp parallel for
-			for(unsigned int i=0;i<nDst;i++){
-				field[i] = 0.;
-					for(unsigned int j=0;j<counts[i];j++){
-						field[i] += *fSrc[srcId[i][j]]*weights[i][j];
-					}
+		for(unsigned int i=0;i<nDst;i++){
+			field[i] = 0.;
+				for(unsigned int j=0;j<counts[i];j++){
+					field[i] += *fSrc[srcId[i][j]]*weights[i][j];
+				}
 			field[i] *= strength;
 		}
     }
@@ -220,6 +222,8 @@ public:
     alignas(alignof(vector<Flt>)) vector<Flt> X;
     alignas(alignof(vector<Flt*>)) vector<Flt*> Xptr;
     vector<vector<int> > P;            // identity of projections to (potentially) joint normalize
+    float stepSize = 0.04;
+    float tau = 0.3; //decay constant
 
     virtual void init (void) {
         this->stepCount = 0;
@@ -243,6 +247,13 @@ public:
         for (unsigned int hi=0; hi<this->nhex; ++hi) {
             this->X[hi] = 0.;
         }
+    }
+
+	void decay(void){
+		#pragma omp parallel for
+		for(unsigned int hi=0; hi<this->nhex; hi++){
+			this->X[hi] = (this->X[hi]/tau)*stepSize;
+		}
     }
 
     void setNormalize(vector<int> proj){
@@ -304,7 +315,7 @@ public:
                 this->X[hi] += this->Projections[i].field[hi];
             }
         }
-    #pragma omp parallel for
+    	#pragma omp parallel for
         for (unsigned int hi=0; hi<this->nhex; ++hi) {
             this->X[hi] = fmax(this->X[hi],0.);
         }
@@ -359,7 +370,6 @@ class CortexSOM : public RD_Sheet<Flt>
         }
     }
 
-
     virtual void step (void) {
         this->stepCount++;
 
@@ -367,7 +377,7 @@ class CortexSOM : public RD_Sheet<Flt>
             this->Projections[i].getWeightedSum();
         }
 
-        this->zero_X();
+		this->zero_X();
 
         for(unsigned int i=0;i<this->Projections.size();i++){
         #pragma omp parallel for
@@ -385,14 +395,51 @@ class CortexSOM : public RD_Sheet<Flt>
         }
     }
 
-    virtual void step (vector<int> projectionIDs) {
+
+    virtual void step (bool zeroCortex, bool decayCortex) {
+        this->stepCount++;
+
+        for(unsigned int i=0;i<this->Projections.size();i++){
+            this->Projections[i].getWeightedSum();
+        }
+
+        if(zeroCortex){
+        	this->zero_X();
+        }
+        else if(decayCortex){
+        	this->decay();
+        }
+
+        for(unsigned int i=0;i<this->Projections.size();i++){
+        #pragma omp parallel for
+            for (unsigned int hi=0; hi<this->nhex; ++hi) {
+                this->X[hi] += this->Projections[i].field[hi];
+            }
+        }
+
+        #pragma omp parallel for
+        for (unsigned int hi=0; hi<this->nhex; ++hi) {
+            this->X[hi] = this->X[hi]-this->Theta[hi];
+            if(this->X[hi]<0.0){
+                this->X[hi] = 0.0;
+            }
+        }
+    }
+
+    virtual void step (vector<int> projectionIDs, bool zeroCortex, bool decayCortex) {
         this->stepCount++;
 
         for(unsigned int i=0;i<projectionIDs.size();i++){
             this->Projections[projectionIDs[i]].getWeightedSum();
         }
 
-        this->zero_X();
+        if(zeroCortex){
+        	this->zero_X();
+        }
+        else if(decayCortex){
+        	this->decay();
+        }
+
 
         for(unsigned int i=0;i<projectionIDs.size();i++){
         #pragma omp parallel for
@@ -494,6 +541,8 @@ public:
     }
 
 
+
+
 };
 
 
@@ -518,7 +567,9 @@ vector<double> getPolyPixelVals(Mat frame, vector<Point> pp){
 }
 
 
-
+/*
+ *
+ */
 class Square{
     public:
         int xid, yid;
@@ -534,6 +585,10 @@ class Square{
     }
 };
 
+
+/*
+ *
+ */
 class CartGrid{
     public:
         int n, nx, ny;
@@ -568,6 +623,9 @@ class CartGrid{
 };
 
 
+/*
+ *
+ */
 template <class Flt>
 class HexCartSampler : public RD_Sheet<Flt>
 {
@@ -586,9 +644,6 @@ public:
     unsigned int stepsize;
 
     vector<vector<double> > PreLoadedPatterns;
-
-    int numberOfVideoFrames;
-    int currentVideoFrame;
 
     HexCartSampler(void){
 
@@ -638,30 +693,27 @@ public:
 
     }
 
-    int initCamera(int xoff, int yoff, int stepsize){
+
+    int initCamera(int xOffset, int yOffset, int stepsize){
         this->stepsize = stepsize;
         mask.resize(4);
-        mask[0] = Point(xoff,yoff);
-        mask[1] = Point(xoff+stepsize*C.nx-1,yoff);
-        mask[2] = Point(xoff+stepsize*C.nx-1,yoff+stepsize*C.ny-1);
-        mask[3] = Point(xoff,yoff+stepsize*C.ny-1);
+        mask[0] = Point(xOffset,yOffset);
+        mask[1] = Point(xOffset+stepsize*C.nx-1,yOffset);
+        mask[2] = Point(xOffset+stepsize*C.nx-1,yOffset+stepsize*C.ny-1);
+        mask[3] = Point(xOffset,yOffset+stepsize*C.ny-1);
         return cap.open(0);
     }
 
-    int initVideo(int xoff, int yoff, int stepsize){
-    	this->currentVideoFrame = 0;
-        this->stepsize = stepsize;
-        mask.resize(4);
-        mask[0] = Point(xoff,yoff);
-        mask[1] = Point(xoff+stepsize*C.nx-1,yoff);
-        mask[2] = Point(xoff+stepsize*C.nx-1,yoff+stepsize*C.ny-1);
-        mask[3] = Point(xoff,yoff+stepsize*C.ny-1);
-        //cap = cv::VideoCapture('/home/jon/MSc Project/SelfOrganisingMaps/planet_earth.avi');
-        if(cap.open("/home/jon/MSc Project/SelfOrganisingMaps/planet_earth.avi"))
-		{
-        	this->numberOfVideoFrames = int(cap.get(CV_CAP_PROP_FRAME_COUNT));
-        	return 1;
-		}
+    int initVideo(int xOffset, int yOffset, int ncols, string videoSource){
+        if(cap.open(videoSource)){
+        	this->stepsize = int(floor(cap.get(CAP_PROP_FRAME_HEIGHT)/ncols));		// Used to capture every stepSize pixel from input video
+            mask.resize(4);
+            mask[0] = Point(xOffset,yOffset);
+            mask[1] = Point(xOffset+stepsize*C.nx-1,yOffset);
+            mask[2] = Point(xOffset+stepsize*C.nx-1,yOffset+stepsize*C.ny-1);
+            mask[3] = Point(xOffset,yOffset+stepsize*C.ny-1);
+            return 1;
+    	}
         else{
         	return 0;
         }
@@ -672,17 +724,17 @@ public:
 		Mat frame;
 		// Capture frame-by-frame
 		cap >> frame;
+	    // If the frame is empty, break immediately
+	    if (frame.empty())
+	      cout << ":No frame to show" << endl;
 
         vector<double> img = getPolyPixelVals(frame,mask);
-        cout << img.size() << endl;
         vector<double> pat((img.size()/stepsize),0.);
         int iter = stepsize*C.ny*stepsize;
         int k=0;
         for(int i=0;i<C.nx;i++){
             int I = (C.nx-i-1)*stepsize;
             for(int j=0;j<C.ny;j++){
-            	cout << (C.ny-j-1)*iter+I << endl;
-            	cout << k << endl;
                 C.vsquare[k].X = img[(C.ny-j-1)*iter+I];
                 k++;
             }

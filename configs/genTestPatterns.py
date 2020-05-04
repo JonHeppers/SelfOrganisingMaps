@@ -15,8 +15,8 @@ def getPic(fname):
 	return p.T.flatten()
 
 P = np.array([],dtype=float)
-P = np.hstack([P, getPic('images/hannes.jpg')])
 P = np.hstack([P, getPic('images/stuart.png')])
+P = np.hstack([P, getPic('images/hannes.jpg')])
 P = np.hstack([P, getPic('images/laura.png')])
 #P = np.hstack([P, getPic('images/laura_left.png')])
 #P = np.hstack([P, getPic('images/laura_right.png')])
@@ -24,6 +24,7 @@ P = np.hstack([P, getPic('images/luke.jpg')])
 P = np.hstack([P, getPic('images/rodrigo.png')])
 P = np.hstack([P, getPic('images/mitch.png')])
 P = np.hstack([P, getPic('images/tony.png')])
+#P = np.hstack([P, getPic('images/blank.png')])
 
 h5f = h5py.File('testPatterns.h5','w')
 h5f.create_dataset('P', data=P)
