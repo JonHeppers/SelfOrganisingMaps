@@ -675,6 +675,7 @@ int main(int argc, char **argv) {
 	}
 
 	bool plotGratingStage = root.get("plotGratingStage", false).asBool();
+	bool plotInitialMaps = root.get("plotInitialMaps", true).asBool();
 
 	if (argc > 5) {
 		cout << "Using weight file: " << argv[5] << endl;
@@ -744,18 +745,17 @@ int main(int argc, char **argv) {
 		myfile.close();
 
 		for (int b = 0; b < nBlocks; b++) {
-			if (plotGratingStage && Net.time > 0) {
+			if (plotGratingStage && plotInitialMaps) {
 				Net.map(displays[0], displays[3], displays[1]);
 				Net.directionMap(displays[0], displays[3], displays[1]);
 				Net.plotMap(displays[4]);
 				Net.plotDirectionMap(displays[5]);
-			} else if (Net.time > 0) {
+			} else if (plotInitialMaps) {
 				Net.map();
 				Net.directionMap();
 				Net.plotMap(displays[4]);
 				Net.plotDirectionMap(displays[5]);
 			}
-
 
 			for (unsigned int i = 0; i < steps; i++) {
 				Net.stepAfferent(INTYPE);

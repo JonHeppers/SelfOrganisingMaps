@@ -35,6 +35,7 @@
 	"gratingWidth" : 30,
 	"numGratingOrientations" : 20,
 	"numGratingPhases" : 8,
+	"plotInitialMaps" : true,
 	"zeroCortex" : true,
 	"decayCortex" : false
 
